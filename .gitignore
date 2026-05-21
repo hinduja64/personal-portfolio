@@ -23,9 +23,5 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 .vercel
-public/media/cat_dance_final.mp4
-public/media/cat_dance_final.mp4
-public/media/cat_dance_final.mp4
-public/media/cat_dance_final.mp4
 node_modules/
 .astro/
