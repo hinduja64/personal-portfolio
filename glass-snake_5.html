@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>glass snake</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0a0a0c; font-family:-apple-system,system-ui,sans-serif; }
+  #stage { position:fixed; inset:0; }
+  canvas { display:block; }
+  video { position:fixed; width:1px; height:1px; opacity:0; pointer-events:none; }
+
+  .glass {
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.35);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border-radius:999px;
+    color:rgba(255,255,255,0.95);
+    text-shadow:0 1px 3px rgba(0,0,0,0.4);
+  }
+  #counter {
+    position:fixed; top:calc(env(safe-area-inset-top,0px) + 14px); left:14px;
+    padding:9px 16px; font-size:17px; font-weight:700; letter-spacing:0.6px;
+    z-index:10; display:none;
+    background:rgba(255,255,255,0.18);
+    border:1.5px solid rgba(255,255,255,0.75);
+    color:#fff;
+    text-shadow:0 0 10px rgba(255,255,255,0.95), 0 0 22px rgba(160,220,255,0.7), 0 1px 2px rgba(0,0,0,0.4);
+    box-shadow:0 0 20px rgba(255,255,255,0.4), inset 0 0 14px rgba(255,255,255,0.22);
+    border-radius:999px;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  }
+  @keyframes ctrpop { 0%{transform:scale(1)} 40%{transform:scale(1.28)} 100%{transform:scale(1)} }
+  #counter.pop { animation:ctrpop 0.45s ease; }
+  #trackDot {
+    position:fixed; top:calc(env(safe-area-inset-top,0px) + 20px); right:18px;
+    width:11px; height:11px; border-radius:50%;
+    background:#e0b23c; box-shadow:0 0 10px rgba(224,178,60,0.8);
+    z-index:10; transition:background 0.3s, box-shadow 0.3s; display:none;
+  }
+  #prompt {
+    position:fixed; top:22%; left:50%; transform:translateX(-50%);
+    padding:12px 26px; font-size:22px; font-weight:700; letter-spacing:1px;
+    z-index:10; display:none; white-space:nowrap;
+    background:rgba(255,255,255,0.14);
+    border:1.5px solid rgba(255,255,255,0.7);
+    border-radius:999px; color:#fff;
+    text-shadow:0 0 12px rgba(255,255,255,0.9), 0 0 26px rgba(160,220,255,0.6);
+    box-shadow:0 0 24px rgba(255,255,255,0.35), inset 0 0 16px rgba(255,255,255,0.2);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    animation:promptfloat 2s ease-in-out infinite;
+  }
+  @keyframes promptfloat { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-8px)} }
+  .plus1 {
+    position:fixed; z-index:11; pointer-events:none;
+    font-weight:800; color:#fff; letter-spacing:1px;
+    text-shadow:0 0 12px rgba(255,255,255,0.95), 0 0 26px rgba(255,180,200,0.8), 0 1px 3px rgba(0,0,0,0.4);
+    opacity:1;
+    transition:transform 0.9s cubic-bezier(0.2,0.7,0.3,1), opacity 0.9s ease;
+  }
+  #overlay {
+    position:fixed; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    background:rgba(8,8,10,0.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  }
+  #overlay h1 {
+    font-size:34px; font-weight:700; color:rgba(255,255,255,0.96);
+    letter-spacing:2px; text-shadow:0 2px 14px rgba(255,255,255,0.35), 0 1px 2px rgba(0,0,0,0.5);
+  }
+  #overlay p { font-size:14px; color:rgba(255,255,255,0.75); text-align:center; max-width:260px; line-height:1.5; }
+  #overlay button {
+    padding:14px 34px; font-size:16px; font-weight:600; cursor:pointer;
+    background:rgba(255,255,255,0.10); border:1.5px solid rgba(255,255,255,0.5);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border-radius:999px; color:#fff; letter-spacing:1px;
+    box-shadow:0 0 24px rgba(255,255,255,0.18), inset 0 0 18px rgba(255,255,255,0.10);
+  }
+  #overlay button:active { transform:scale(0.96); }
+  #hint { position:fixed; bottom:calc(env(safe-area-inset-bottom,0px) + 14px); left:50%; transform:translateX(-50%);
+    padding:6px 14px; font-size:12px; z-index:10; display:none; white-space:nowrap; opacity:0.85; }
+  #err { position:fixed; bottom:12px; left:12px; right:12px; color:#ff8a8a; font-size:12px; z-index:30; text-align:center; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<video id="cam" autoplay playsinline muted></video>
+<div id="counter">apples 0/10</div>
+<div id="trackDot"></div>
+<div id="prompt">eat the apple</div>
+<div id="hint" class="glass">open hand = play &nbsp;&middot;&nbsp; fist = sleep</div>
+
+<div id="overlay">
+  <h1>glass snake</h1>
+  <p>move your hand to steer. eat 10 apples. that's it.</p>
+  <button id="startBtn">tap to start</button>
+</div>
+
+<div id="gameoverWrap" style="position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:22px;">
+  <h1 style="font-size:40px;font-weight:700;color:rgba(255,255,255,0.97);letter-spacing:3px;text-shadow:0 2px 20px rgba(255,255,255,0.4),0 1px 2px rgba(0,0,0,0.5);">GAME OVER</h1>
+  <button id="restartBtn" class="glass" style="padding:13px 32px;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:1px;">play again</button>
+</div>
+<div id="err"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- dom ---------- */
+var video = document.getElementById('cam');
+var stage = document.getElementById('stage');
+var counterEl = document.getElementById('counter');
+var dotEl = document.getElementById('trackDot');
+var overlayEl = document.getElementById('overlay');
+var startBtn = document.getElementById('startBtn');
+var goWrap = document.getElementById('gameoverWrap');
+var restartBtn = document.getElementById('restartBtn');
+var hintEl = document.getElementById('hint');
+var promptEl = document.getElementById('prompt');
+var errEl = document.getElementById('err');
+
+/* ---------- constants ---------- */
+var MAX_APPLES = 10;
+var SEG_START = 4;
+var SEG_PER_APPLE = 2;
+var SCALE_PER_APPLE = 1.05;
+var SMOOTH = 0.15;
+var LOOKAHEAD = 0.1;
+var EAT_EARLY = 0.05;
+var GROW_T = 0.3;
+
+/* ---------- state ---------- */
+var W = window.innerWidth, H = window.innerHeight;
+var renderer, scene, camera3, videoTex, bgMesh;
+var snake = [];
+var particles = [];
+var apple = null;
+var handRaw = {x:W/2, y:H/2};
+var handSm = {x:W/2, y:H/2};
+var handVel = {x:0, y:0};
+var handSeen = 0;
+var handConf = 0;
+var handOpen = true;
+var handHistory = [];
+var eaten = 0;
+var startTime = 0;
+var state = 'idle';
+var dieT = 0;
+var spawnAt = 0;
+var lastMP = 0;
+var lastFrame = 0;
+var warp = 0;
+var audioReady = false, actx = null, master = null;
+var hbNext = 0;
+var deathNotesPlayed = false;
+var promptTimer = null;
+
+function U(){ return Math.min(W, H) / 100; }
+function headR(){ return 6.2 * U() * Math.pow(SCALE_PER_APPLE, eaten); }
+function clampN(v, a, b){ return Math.min(Math.max(v, a), b); }
+
+/* ---------- audio ---------- */
+var SCALE_HZ = [261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25,587.33,659.25];
+function initAudio(){
+  if (audioReady) return;
+  try {
+    actx = new (window.AudioContext||window.webkitAudioContext)();
+    master = actx.createGain();
+    master.gain.value = 0.24;
+    var comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -14;
+    comp.ratio.value = 6;
+    master.connect(comp);
+    comp.connect(actx.destination);
+    audioReady = true;
+  } catch(e){}
+}
+function tone(freq, t0, dur, type, vol){
+  if (!audioReady) return;
+  var o = actx.createOscillator(), g = actx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol||0.6, t0+0.012);
+  g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+  o.connect(g); g.connect(master);
+  o.start(t0); o.stop(t0+dur+0.05);
+}
+function eatSound(n){
+  if (!audioReady) return;
+  var f = SCALE_HZ[Math.min(n-1, SCALE_HZ.length-1)];
+  var t = actx.currentTime;
+  var vol = Math.min(0.95, 0.5 + n*0.05);
+  tone(f, t, 0.3, 'sine', vol);
+  tone(f*2, t, 0.18, 'sine', Math.min(0.35, 0.12 + n*0.015));
+  var o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(170, t);
+  o.frequency.exponentialRampToValueAtTime(85, t+0.16);
+  var gv = Math.min(0.55, 0.12 + n*0.045);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gv, t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.2);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t+0.25);
+}
+function heartbeat(){
+  if (!audioReady) return;
+  var t = actx.currentTime;
+  tone(70, t, 0.14, 'sine', 0.5);
+  tone(58, t+0.16, 0.16, 'sine', 0.4);
+}
+function deathSound(){
+  if (!audioReady || deathNotesPlayed) return;
+  deathNotesPlayed = true;
+  var seq = [392.00,349.23,329.63,293.66,261.63];
+  var t = actx.currentTime;
+  for (var i=0;i<seq.length;i++) tone(seq[i], t + i*0.3, 0.34, 'triangle', 0.45);
+}
+
+/* ---------- shaders ---------- */
+var GLASS_VERT = [
+'varying vec2 vUv;',
+'void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+].join('\n');
+
+var GLASS_COMMON = [
+'precision highp float;',
+'uniform sampler2D uVideo;',
+'uniform vec2 uRes;',
+'uniform vec2 uFit;',
+'uniform float uAlpha;',
+'uniform float uTime;',
+'uniform float uSeed;',
+'varying vec2 vUv;',
+'vec2 vidUV(vec2 s){',
+'  vec2 uv = (s - 0.5) * uFit + 0.5;',
+'  uv.x = 1.0 - uv.x;',
+'  return clamp(uv, 0.001, 0.999);',
+'}',
+'vec3 refr(vec2 sUV, vec2 disp){',
+'  vec3 c;',
+'  c.r = texture2D(uVideo, vidUV(sUV + disp*1.12)).r;',
+'  c.g = texture2D(uVideo, vidUV(sUV + disp*1.00)).g;',
+'  c.b = texture2D(uVideo, vidUV(sUV + disp*0.88)).b;',
+'  return c * 1.06;',
+'}'
+].join('\n');
+
+var GLASS_FRAG = GLASS_COMMON + '\n' + [
+'void main(){',
+'  vec2 p = vUv * 2.0 - 1.0;',
+'  vec2 q = vec2(p.x, -p.y);',
+'  float d = length(q);',
+'  if (d > 1.0) discard;',
+'  vec2 sUV = gl_FragCoord.xy / uRes;',
+'  float bulge = pow(d, 1.7);',
+'  vec2 n = (d > 0.001) ? q / d : vec2(0.0);',
+'  float wob = 0.006 * sin(uTime*2.0 + uSeed*7.0 + d*6.0);',
+'  vec2 disp = vec2(n.x, -n.y) * (bulge * 0.055 + wob);',
+'  vec3 col = refr(sUV, disp);',
+'  float rim = smoothstep(0.68, 0.96, d);',
+'  float rim2 = smoothstep(0.96, 1.0, d);',
+'  float ang = atan(q.y, q.x);',
+'  vec3 iri = vec3(1.0) + 0.22*vec3(sin(ang+uSeed), sin(ang*2.0), cos(ang+uSeed));',
+'  col = mix(col, iri, rim*0.8);',
+'  float spec = smoothstep(0.30, 0.05, length(q - vec2(-0.38, 0.42)));',
+'  col += spec * 0.55;',
+'  float a = (0.16 + rim*0.9) * (1.0 - rim2) * uAlpha;',
+'  a += spec * 0.4 * uAlpha;',
+'  gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));',
+'}'
+].join('\n');
+
+var HEAD_FRAG = GLASS_COMMON + '\n' + [
+'uniform vec2 uLook;',
+'void main(){',
+'  vec2 p = vUv * 2.0 - 1.0;',
+'  vec2 q = vec2(p.x, -p.y);',
+'  float d = length(q);',
+'  if (d > 1.0) discard;',
+'  vec2 sUV = gl_FragCoord.xy / uRes;',
+'  float bulge = pow(d, 1.7);',
+'  vec2 n = (d > 0.001) ? q / d : vec2(0.0);',
+'  vec2 disp = vec2(n.x, -n.y) * bulge * 0.06;',
+'  vec3 col = refr(sUV, disp);',
+'  float rim = smoothstep(0.66, 0.96, d);',
+'  float rim2 = smoothstep(0.96, 1.0, d);',
+'  float ang = atan(q.y, q.x);',
+'  vec3 iri = vec3(1.0) + 0.22*vec3(sin(ang+uSeed), sin(ang*2.0), cos(ang+uSeed));',
+'  col = mix(col, iri, rim*0.8);',
+'  float spec = smoothstep(0.34, 0.06, length(q - vec2(-0.36, 0.44)));',
+'  col += spec * 0.5;',
+'  float a = (0.20 + rim*0.9) * (1.0 - rim2) * uAlpha;',
+'  a += spec * 0.4 * uAlpha;',
+'  vec2 eL = q - vec2(-0.33, 0.24);',
+'  vec2 eR = q - vec2( 0.33, 0.24);',
+'  float eye = min(length(eL), length(eR)) - 0.22;',
+'  if (eye < 0.0){',
+'    float soft = smoothstep(0.0, 0.05, -eye);',
+'    vec3 sclera = mix(refr(sUV, disp*0.3), vec3(1.0), 0.82);',
+'    col = mix(col, sclera, soft);',
+'    a = max(a, 0.92*soft*uAlpha);',
+'    vec2 look = uLook * 0.07;',
+'    float pup = min(length(eL - look), length(eR - look)) - 0.10;',
+'    if (pup < 0.0){',
+'      float ps = smoothstep(0.0, 0.035, -pup);',
+'      col = mix(col, vec3(0.07,0.07,0.10), ps);',
+'      float glint = smoothstep(0.05, 0.0, length(eL - look - vec2(-0.035,0.04)));',
+'      glint = max(glint, smoothstep(0.05, 0.0, length(eR - look - vec2(-0.035,0.04))));',
+'      col += glint * 0.9;',
+'      a = max(a, ps*uAlpha);',
+'    }',
+'  }',
+'  gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));',
+'}'
+].join('\n');
+
+var APPLE_FRAG = GLASS_COMMON + '\n' + [
+'void main(){',
+'  vec2 p = vUv * 2.0 - 1.0;',
+'  vec2 q = vec2(p.x, -p.y);',
+'  float body = length(vec2(q.x, (q.y + 0.14) * 1.12)) - 0.62;',
+'  float notch = length(q - vec2(0.0, 0.62)) - 0.24;',
+'  body = max(body, -notch);',
+'  vec2 st = q - vec2(0.05, 0.52);',
+'  float ca = cos(0.25), sa = sin(0.25);',
+'  st = vec2(ca*st.x - sa*st.y, sa*st.x + ca*st.y);',
+'  float stem = max(abs(st.x) - 0.045, abs(st.y) - 0.22);',
+'  vec2 lf = q - vec2(0.30, 0.56);',
+'  float cb = cos(-0.6), sb = sin(-0.6);',
+'  lf = vec2(cb*lf.x - sb*lf.y, sb*lf.x + cb*lf.y);',
+'  float leaf = length(lf * vec2(2.6, 5.0)) - 0.62;',
+'  vec2 sUV = gl_FragCoord.xy / uRes;',
+'  if (body < 0.0){',
+'    float d = clamp(1.0 + body/0.62, 0.0, 1.0);',
+'    float bulge = pow(d, 1.6);',
+'    vec2 n = (length(q) > 0.001) ? normalize(q) : vec2(0.0);',
+'    vec2 disp = vec2(n.x, -n.y) * bulge * 0.06;',
+'    vec3 col = refr(sUV, disp);',
+'    float rim = smoothstep(-0.16, -0.015, body);',
+'    vec3 red = vec3(1.0, 0.36, 0.42);',
+'    col = mix(col, mix(vec3(1.0), red, 0.75), rim*0.85);',
+'    col = mix(col, red, 0.14);',
+'    float spec = smoothstep(0.30, 0.05, length(q - vec2(-0.28, 0.28)));',
+'    col += spec * 0.55;',
+'    float edge = smoothstep(0.0, 0.03, -body);',
+'    float a = (0.22 + rim*0.9 + spec*0.4) * edge * uAlpha;',
+'    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));',
+'    return;',
+'  }',
+'  if (stem < 0.0){',
+'    float edge = smoothstep(0.0, 0.02, -stem);',
+'    vec3 col = mix(refr(sUV, vec2(0.0)), vec3(0.5, 0.33, 0.18), 0.8);',
+'    col += smoothstep(0.02, 0.0, abs(st.x + 0.02)) * 0.25;',
+'    gl_FragColor = vec4(col, 0.9 * edge * uAlpha);',
+'    return;',
+'  }',
+'  if (leaf < 0.0){',
+'    float edge = smoothstep(0.0, 0.08, -leaf);',
+'    float rim = smoothstep(-0.20, -0.02, leaf);',
+'    vec3 col = mix(refr(sUV, vec2(0.01)), vec3(0.45, 0.95, 0.55), 0.55);',
+'    col = mix(col, vec3(0.85, 1.0, 0.88), rim*0.6);',
+'    gl_FragColor = vec4(col, (0.55 + rim*0.35) * edge * uAlpha);',
+'    return;',
+'  }',
+'  discard;',
+'}'
+].join('\n');
+
+var BG_FRAG = [
+'precision highp float;',
+'uniform sampler2D uVideo;',
+'uniform vec2 uRes;',
+'uniform vec2 uFit;',
+'uniform float uWarp;',
+'uniform float uTime;',
+'varying vec2 vUv;',
+'void main(){',
+'  vec2 s = gl_FragCoord.xy / uRes;',
+'  vec2 c = s - 0.5;',
+'  float l = length(c);',
+'  float w = uWarp * (0.22 * l * l + 0.03 * sin(l*22.0 - uTime*9.0));',
+'  s = 0.5 + c * (1.0 - w);',
+'  vec2 uv = (s - 0.5) * uFit + 0.5;',
+'  uv.x = 1.0 - uv.x;',
+'  uv = clamp(uv, 0.001, 0.999);',
+'  vec3 col = texture2D(uVideo, uv).rgb;',
+'  col = mix(col, col*vec3(0.9,0.95,1.05), uWarp*0.5);',
+'  gl_FragColor = vec4(col, 1.0);',
+'}'
+].join('\n');
+
+var sharedFit = new THREE.Vector2(1,1);
+var sharedRes = new THREE.Vector2(1,1);
+
+function makeMat(frag, extra){
+  var u = {
+    uVideo:{value:videoTex}, uRes:{value:sharedRes}, uFit:{value:sharedFit},
+    uAlpha:{value:1}, uTime:{value:0}, uSeed:{value:Math.random()*10}
+  };
+  if (extra) for (var k in extra) u[k] = extra[k];
+  return new THREE.ShaderMaterial({
+    uniforms:u, vertexShader:GLASS_VERT, fragmentShader:frag,
+    transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide
+  });
+}
+
+function initThree(){
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  stage.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  camera3 = new THREE.OrthographicCamera(0, W, 0, H, -10, 10);
+
+  videoTex = new THREE.VideoTexture(video);
+  videoTex.minFilter = THREE.LinearFilter;
+  videoTex.magFilter = THREE.LinearFilter;
+
+  var bgU = {
+    uVideo:{value:videoTex}, uRes:{value:sharedRes}, uFit:{value:sharedFit},
+    uWarp:{value:0}, uTime:{value:0}
+  };
+  bgMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2,2),
+    new THREE.ShaderMaterial({uniforms:bgU, vertexShader:GLASS_VERT, fragmentShader:BG_FRAG, depthTest:false, depthWrite:false, side:THREE.DoubleSide})
+  );
+  bgMesh.userData.u = bgU;
+  bgMesh.frustumCulled = false;
+  bgMesh.renderOrder = -1;
+  positionBG();
+  scene.add(bgMesh);
+  updateFit();
+}
+function positionBG(){
+  bgMesh.geometry.dispose();
+  bgMesh.geometry = new THREE.PlaneGeometry(W, H);
+  bgMesh.position.set(W/2, H/2, -1);
+}
+function updateFit(){
+  var dpr = renderer.getPixelRatio();
+  sharedRes.set(W*dpr, H*dpr);
+  var vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  var va = vw/vh, sa = W/H;
+  if (va > sa) sharedFit.set(sa/va, 1);
+  else sharedFit.set(1, va/sa);
+}
+function videoToScreen(nx, ny){
+  var vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  var va = vw/vh, sa = W/H;
+  var x, y;
+  if (va > sa){
+    var dw = H*va;
+    x = (W - dw)/2 + (1-nx)*dw;
+    y = ny*H;
+  } else {
+    var dh = W/va;
+    x = (1-nx)*W;
+    y = (H - dh)/2 + ny*dh;
+  }
+  return {x:x, y:y};
+}
+
+/* ---------- orbs ---------- */
+function makeOrbMesh(r, mat){
+  var m = new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat);
+  m.scale.set(r, r, 1);
+  m.userData.r = r;
+  scene.add(m);
+  return m;
+}
+function orbAlpha(m, a){ m.material.uniforms.uAlpha.value = a; }
+
+/* ---------- snake ---------- */
+function refreshRadii(){
+  var N = snake.length;
+  for (var i=0;i<N;i++){
+    var t = (N > 1) ? i/(N-1) : 0;
+    var r = Math.max(2.2*U(), headR() * (1 - 0.62*t));
+    snake[i].mesh.userData.r = r;
+    snake[i].mesh.scale.set(r, r, 1);
+  }
+}
+function buildSnake(){
+  for (var i=0;i<snake.length;i++){ scene.remove(snake[i].mesh); snake[i].mesh.material.dispose(); }
+  snake = [];
+  for (var j=0;j<SEG_START;j++){
+    var mat = (j===0) ? makeMat(HEAD_FRAG, {uLook:{value:new THREE.Vector2(0,0)}}) : makeMat(GLASS_FRAG);
+    var mesh = makeOrbMesh(10, mat);
+    mesh.position.set(W/2, H/2 + j*headR()*1.3, 0);
+    snake.push({mesh:mesh, x:W/2, y:H/2 + j*headR()*1.3, pulse:-1, delay:j*0.03});
+  }
+  refreshRadii();
+}
+function addSegments(n){
+  var tail = snake[snake.length-1];
+  for (var i=0;i<n;i++){
+    var mesh = makeOrbMesh(10, makeMat(GLASS_FRAG));
+    mesh.position.set(tail.x, tail.y, 0);
+    snake.push({mesh:mesh, x:tail.x, y:tail.y, pulse:-1, delay:snake.length*0.03});
+  }
+  refreshRadii();
+  for (var k=0;k<snake.length;k++) snake[k].pulse = 0;
+}
+
+/* ---------- apple ---------- */
+function appleRadius(){ return (6.0 + eaten*0.35) * U(); }
+function spawnApple(){
+  var r = appleRadius();
+  var margin = Math.max(50, 10*U());
+  var topM = margin + 70;
+  var minX = margin, maxX = W-margin, minY = topM, maxY = H-margin;
+  if (handHistory.length > 10){
+    var bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9;
+    for (var i=0;i<handHistory.length;i++){
+      var p = handHistory[i];
+      bx0=Math.min(bx0,p.x); bx1=Math.max(bx1,p.x);
+      by0=Math.min(by0,p.y); by1=Math.max(by1,p.y);
+    }
+    var pad = 20*U();
+    minX = clampN(bx0-pad, margin, W-margin);
+    maxX = clampN(bx1+pad, margin, W-margin);
+    minY = clampN(by0-pad, topM, H-margin);
+    maxY = clampN(by1+pad, topM, H-margin);
+    if (maxX-minX < 30*U()){ minX = Math.max(margin, minX-18*U()); maxX = Math.min(W-margin, maxX+18*U()); }
+    if (maxY-minY < 30*U()){ minY = Math.max(topM, minY-18*U()); maxY = Math.min(H-margin, maxY+18*U()); }
+    if (maxX < minX){ minX = margin; maxX = W-margin; }
+    if (maxY < minY){ minY = topM; maxY = H-margin; }
+  }
+  var minDist = Math.min((28 + eaten*7)*U(), Math.hypot(W,H)*0.72);
+  var x=W/2, y=H/2, ok=false;
+  for (var t=0;t<40;t++){
+    x = minX + Math.random()*(maxX-minX);
+    y = minY + Math.random()*(maxY-minY);
+    if (Math.hypot(x-handSm.x, y-handSm.y) >= minDist){ ok=true; break; }
+  }
+  if (!ok){
+    var ang = Math.random()*Math.PI*2;
+    x = clampN(handSm.x + Math.cos(ang)*minDist, margin, W-margin);
+    y = clampN(handSm.y + Math.sin(ang)*minDist, topM, H-margin);
+  }
+  var mesh = makeOrbMesh(0.001, makeMat(APPLE_FRAG));
+  mesh.position.set(x, y, 0);
+  apple = {mesh:mesh, x:x, y:y, r:r, born:performance.now()/1000, state:'telegraph'};
+}
+function removeApple(){
+  if (!apple) return;
+  scene.remove(apple.mesh);
+  apple.mesh.material.dispose();
+  apple = null;
+}
+function spawnDelay(){
+  var t = Math.min((performance.now()/1000 - startTime), 90);
+  return Math.max(0.25, 0.9 - (t/90)*0.6);
+}
+
+/* ---------- particles ---------- */
+function burst(x, y, n, speed, r){
+  for (var i=0;i<n;i++){
+    var mesh = makeOrbMesh(r*(0.4+Math.random()*0.6), makeMat(GLASS_FRAG));
+    mesh.position.set(x, y, 0);
+    var a = Math.random()*Math.PI*2, s = speed*(0.4+Math.random()*0.8);
+    particles.push({mesh:mesh, x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:1, decay:1.4+Math.random()});
+  }
+}
+function updateParticles(dt){
+  for (var i=particles.length-1;i>=0;i--){
+    var p = particles[i];
+    p.life -= dt*p.decay;
+    if (p.life<=0){ scene.remove(p.mesh); p.mesh.material.dispose(); particles.splice(i,1); continue; }
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vx *= 0.98; p.vy *= 0.98;
+    p.mesh.position.set(p.x, p.y, 0);
+    orbAlpha(p.mesh, p.life*0.8);
+    var sc = p.mesh.userData.r * p.life;
+    p.mesh.scale.set(sc, sc, 1);
+  }
+}
+
+/* ---------- +1 pop ---------- */
+function plusOne(x, y){
+  var el = document.createElement('div');
+  el.className = 'plus1';
+  el.textContent = '+1';
+  el.style.fontSize = Math.max(22, Math.round(4.5*U())) + 'px';
+  el.style.left = Math.round(x) + 'px';
+  el.style.top = Math.round(y) + 'px';
+  document.body.appendChild(el);
+  var tx = (70 - x) * 0.3;
+  var ty = (44 - y) * 0.3 - 50;
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(0.75)';
+      el.style.opacity = '0';
+    });
+  });
+  setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 1000);
+}
+function counterPop(){
+  counterEl.classList.remove('pop');
+  void counterEl.offsetWidth;
+  counterEl.classList.add('pop');
+}
+
+/* ---------- mediapipe ---------- */
+var hands;
+function initHands(){
+  hands = new Hands({locateFile:function(f){ return 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/'+f; }});
+  hands.setOptions({maxNumHands:2, modelComplexity:0, minDetectionConfidence:0.6, minTrackingConfidence:0.5});
+  hands.onResults(onHands);
+}
+function onHands(res){
+  var lms = res.multiHandLandmarks, meta = res.multiHandedness;
+  if (!lms || !lms.length){ handConf = Math.max(0, handConf-0.1); return; }
+  var best = 0;
+  if (lms.length > 1 && meta && meta.length > 1){
+    best = (meta[1].score > meta[0].score) ? 1 : 0;
+  }
+  var lm = lms[best];
+  handConf = meta && meta[best] ? meta[best].score : 0.8;
+  handSeen = performance.now()/1000;
+  var ctrl = lm[9];
+  var p = videoToScreen(ctrl.x, ctrl.y);
+  handRaw.x = p.x; handRaw.y = p.y;
+  var wrist = lm[0], open = 0;
+  var tips=[8,12,16,20], pips=[6,10,14,18];
+  for (var i=0;i<4;i++){
+    var dt2 = Math.hypot(lm[tips[i]].x-wrist.x, lm[tips[i]].y-wrist.y);
+    var dp = Math.hypot(lm[pips[i]].x-wrist.x, lm[pips[i]].y-wrist.y);
+    if (dt2 > dp*1.05) open++;
+  }
+  handOpen = open >= 3;
+  handHistory.push({x:p.x, y:p.y});
+  if (handHistory.length > 120) handHistory.shift();
+}
+function mpLoop(){
+  var now = performance.now();
+  if (video.readyState >= 2 && now - lastMP >= 33){
+    lastMP = now;
+    var p;
+    try { p = hands.send({image:video}); } catch(e){ p = null; }
+    if (p && p.then){
+      p.then(function(){}, function(){}).then(function(){ requestAnimationFrame(mpLoop); });
+    } else {
+      requestAnimationFrame(mpLoop);
+    }
+  } else {
+    requestAnimationFrame(mpLoop);
+  }
+}
+
+/* ---------- game flow ---------- */
+function showPrompt(){
+  promptEl.style.display = 'block';
+  if (promptTimer) clearTimeout(promptTimer);
+  promptTimer = setTimeout(function(){ promptEl.style.display = 'none'; }, 5000);
+}
+function hidePrompt(){
+  promptEl.style.display = 'none';
+  if (promptTimer){ clearTimeout(promptTimer); promptTimer = null; }
+}
+function resetGame(){
+  eaten = 0;
+  warp = 0;
+  deathNotesPlayed = false;
+  counterEl.textContent = 'apples 0/10';
+  removeApple();
+  for (var i=particles.length-1;i>=0;i--){ scene.remove(particles[i].mesh); particles[i].mesh.material.dispose(); }
+  particles = [];
+  buildSnake();
+  handSm.x = W/2; handSm.y = H/2; handVel.x = 0; handVel.y = 0;
+  handHistory = [];
+  startTime = performance.now()/1000;
+  spawnAt = startTime + 0.8;
+  state = 'play';
+  goWrap.style.display = 'none';
+  counterEl.style.display = 'block';
+  dotEl.style.display = 'block';
+  hintEl.style.display = 'block';
+  showPrompt();
+  setTimeout(function(){ hintEl.style.display='none'; }, 4000);
+}
+function die(){
+  state = 'dying';
+  dieT = 0;
+  removeApple();
+  hidePrompt();
+  deathSound();
+  for (var i=0;i<snake.length;i++){
+    var s = snake[i];
+    burst(s.x, s.y, 2, 40*U(), s.mesh.userData.r*0.5);
+  }
+}
+
+/* ---------- main loop ---------- */
+function frame(){
+  requestAnimationFrame(frame);
+  var now = performance.now()/1000;
+  var dt = Math.min(0.05, now - (lastFrame||now));
+  lastFrame = now;
+
+  scene.traverse(function(o){
+    if (o.material && o.material.uniforms && o.material.uniforms.uTime) o.material.uniforms.uTime.value = now;
+  });
+  bgMesh.userData.u.uWarp.value = warp;
+
+  var tracked = (now - handSeen) < 0.5;
+  if (tracked){
+    if (handConf > 0.8){ dotEl.style.background = '#5DCAA5'; dotEl.style.boxShadow = '0 0 10px rgba(93,202,165,0.9)'; }
+    else { dotEl.style.background = '#e0b23c'; dotEl.style.boxShadow = '0 0 10px rgba(224,178,60,0.8)'; }
+  } else {
+    dotEl.style.background = '#E24B4A'; dotEl.style.boxShadow = '0 0 10px rgba(226,75,74,0.8)';
+  }
+
+  if (state === 'play'){
+    if (tracked){
+      var px = handSm.x, py = handSm.y;
+      handSm.x += (handRaw.x - handSm.x) * SMOOTH;
+      handSm.y += (handRaw.y - handSm.y) * SMOOTH;
+      handVel.x = handVel.x*0.85 + ((handSm.x-px)/Math.max(dt,0.001))*0.15;
+      handVel.y = handVel.y*0.85 + ((handSm.y-py)/Math.max(dt,0.001))*0.15;
+    }
+    var target = {x:handSm.x + handVel.x*LOOKAHEAD, y:handSm.y + handVel.y*LOOKAHEAD};
+
+    var head = snake[0];
+    var k = 10, damp = 0.82;
+    head.vx = (head.vx||0)*damp + (target.x - head.x)*k*dt;
+    head.vy = (head.vy||0)*damp + (target.y - head.y)*k*dt;
+    head.x += head.vx; head.y += head.vy;
+
+    var lu = head.mesh.material.uniforms.uLook;
+    if (lu){
+      var sp = Math.hypot(head.vx, head.vy);
+      if (sp > 0.4){
+        var lx = clampN(head.vx/sp, -1, 1);
+        var ly = clampN(-head.vy/sp, -1, 1);
+        lu.value.x += (lx - lu.value.x)*0.12;
+        lu.value.y += (ly - lu.value.y)*0.12;
+      }
+    }
+
+    for (var i=1;i<snake.length;i++){
+      var a = snake[i-1], b = snake[i];
+      var spacing = (a.mesh.userData.r + b.mesh.userData.r) * 0.62;
+      var dx = b.x-a.x, dy = b.y-a.y;
+      var d = Math.hypot(dx,dy) || 0.001;
+      var tx = a.x + dx/d*spacing, ty = a.y + dy/d*spacing;
+      b.x += (tx-b.x)*Math.min(1, dt*14);
+      b.y += (ty-b.y)*Math.min(1, dt*14);
+    }
+
+    var speed = Math.hypot(head.vx, head.vy)/Math.max(dt,0.001);
+    if (speed > 180*U() && Math.random() < 0.35) burst(head.x, head.y, 1, 8*U(), 1.6*U());
+
+    var alpha = handOpen ? 1 : 0.35;
+    for (var j=0;j<snake.length;j++){
+      var s = snake[j];
+      var sc = s.mesh.userData.r;
+      if (s.pulse >= 0){
+        s.pulse += dt;
+        var pt = (s.pulse - s.delay)/GROW_T;
+        if (pt >= 0 && pt <= 1) sc *= 1 + 0.35*Math.sin(Math.PI*pt);
+        if (s.pulse > GROW_T + s.delay + 0.1) s.pulse = -1;
+      }
+      s.mesh.scale.set(sc, sc, 1);
+      s.mesh.position.set(s.x, s.y, 0);
+      orbAlpha(s.mesh, alpha);
+    }
+
+    if (!apple && now >= spawnAt) spawnApple();
+    if (apple){
+      var age = now - apple.born;
+      if (apple.state === 'telegraph'){
+        var g = Math.min(1, age/0.2);
+        var rr = apple.r * g * (1 + 0.25*Math.sin(age*30));
+        apple.mesh.scale.set(Math.max(0.001,rr), Math.max(0.001,rr), 1);
+        orbAlpha(apple.mesh, g*0.9);
+        if (age >= 0.2) apple.state = 'live';
+      } else {
+        var puls = 1 + 0.06*Math.sin(now*4);
+        apple.mesh.scale.set(apple.r*puls, apple.r*puls, 1);
+        orbAlpha(apple.mesh, 1);
+        if (handOpen && tracked){
+          var predX = head.x + head.vx/Math.max(dt,0.001)*EAT_EARLY;
+          var predY = head.y + head.vy/Math.max(dt,0.001)*EAT_EARLY;
+          var hitR = head.mesh.userData.r + apple.r*0.8;
+          if (Math.hypot(predX-apple.x, predY-apple.y) < hitR || Math.hypot(head.x-apple.x, head.y-apple.y) < hitR){
+            eaten++;
+            counterEl.textContent = 'apples ' + eaten + '/10';
+            counterPop();
+            plusOne(apple.x, apple.y);
+            eatSound(eaten);
+            if (eaten === 1) hidePrompt();
+            burst(apple.x, apple.y, 6, 30*U(), 2*U());
+            removeApple();
+            if (eaten >= MAX_APPLES){ die(); }
+            else { addSegments(SEG_PER_APPLE); spawnAt = now + spawnDelay(); }
+          }
+        }
+      }
+    }
+
+    if (eaten >= 7 && eaten < MAX_APPLES && audioReady){
+      if (now >= hbNext){
+        heartbeat();
+        var iv = eaten===7 ? 0.9 : (eaten===8 ? 0.65 : 0.48);
+        hbNext = now + iv;
+      }
+    }
+  }
+
+  if (state === 'dying'){
+    dieT += dt;
+    warp = Math.min(1, dieT*1.4) * (1 - Math.min(1, Math.max(0, (dieT-1.6)/0.8)));
+    for (var m=0;m<snake.length;m++){
+      var seg = snake[m];
+      if (!seg.dead && dieT > m*0.06){
+        seg.dead = true;
+        burst(seg.x, seg.y, 4, 55*U(), seg.mesh.userData.r*0.55);
+        scene.remove(seg.mesh);
+      }
+    }
+    if (dieT > 1.8 && state === 'dying'){
+      state = 'over';
+      warp = 0;
+      goWrap.style.display = 'flex';
+    }
+  }
+
+  updateParticles(dt);
+  renderer.render(scene, camera3);
+}
+
+/* ---------- resize ---------- */
+function onResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  if (!renderer) return;
+  renderer.setSize(W, H);
+  camera3.right = W; camera3.bottom = H;
+  camera3.updateProjectionMatrix();
+  positionBG();
+  updateFit();
+  handHistory = [];
+  var margin = Math.max(50, 10*U());
+  handSm.x = clampN(handSm.x, 0, W);
+  handSm.y = clampN(handSm.y, 0, H);
+  for (var i=0;i<snake.length;i++){
+    snake[i].x = clampN(snake[i].x, margin, W-margin);
+    snake[i].y = clampN(snake[i].y, margin, H-margin);
+  }
+  refreshRadii();
+  if (apple){
+    apple.r = appleRadius();
+    apple.x = clampN(apple.x, margin, W-margin);
+    apple.y = clampN(apple.y, margin+70, H-margin);
+    apple.mesh.position.set(apple.x, apple.y, 0);
+  }
+}
+
+/* ---------- boot ---------- */
+function fail(msg){ errEl.textContent = msg; }
+startBtn.addEventListener('click', function(){
+  initAudio();
+  startBtn.textContent = 'starting…';
+  navigator.mediaDevices.getUserMedia({
+    video:{facingMode:'user', width:{ideal:1280}, height:{ideal:720}}, audio:false
+  }).then(function(stream){
+    video.srcObject = stream;
+    return video.play();
+  }).then(function(){
+    var ready = function(){
+      overlayEl.style.display = 'none';
+      initThree();
+      initHands();
+      mpLoop();
+      resetGame();
+      requestAnimationFrame(frame);
+    };
+    if (video.videoWidth > 0) ready();
+    else video.addEventListener('loadeddata', ready, {once:true});
+  }).catch(function(e){
+    startBtn.textContent = 'tap to start';
+    fail('camera access needed to play — check permissions and try again');
+  });
+});
+restartBtn.addEventListener('click', function(){ resetGame(); });
+window.addEventListener('resize', onResize);
+video.addEventListener('loadedmetadata', function(){ if (renderer) updateFit(); });
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+  fail('this browser does not support camera access — try Safari or Chrome');
+}
+})();
+</script>
+</body>
+</html>
